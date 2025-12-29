@@ -35,11 +35,7 @@ Class<TestA>("", "TestA", "class TestA")
     .constant("N", 10)
     .property("a", &TestA::getA, &TestA::setA)
     .property("b", &TestA::getB, &TestA::setB)
-    .func("print", [](GAny &self) {
-        if (self.is<TestA>()) {
-            self.as<TestA>()->print();
-        }
-    });
+    .func("print", &TestA::print);
 
 // 动态创建对象
 GAny ClassTestA = GAny::Import("TestA");
@@ -239,13 +235,13 @@ obj["b"] = 2.0;
 obj["c"] = "string";
 obj["d"] = {1, 2, 3};
 
-// 访问属性
+// 访问元素
 int a = obj["a"].toInt32();
 
-// 设置属性
+// 设置元素
 obj.setItem("f", "value");
 
-// 删除属性
+// 删除元素
 obj.erase("b");
 // 或使用 undefined 标记删除
 obj["i"] = GAny::undefined();

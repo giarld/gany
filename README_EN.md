@@ -35,11 +35,7 @@ Class<TestA>("", "TestA", "class TestA")
     .constant("N", 10)
     .property("a", &TestA::getA, &TestA::setA)
     .property("b", &TestA::getB, &TestA::setB)
-    .func("print", [](GAny &self) {
-        if (self.is<TestA>()) {
-            self.as<TestA>()->print();
-        }
-    });
+    .func("print", &TestA::print);
 
 // Create objects dynamically
 GAny ClassTestA = GAny::Import("TestA");
@@ -239,13 +235,13 @@ obj["b"] = 2.0;
 obj["c"] = "string";
 obj["d"] = {1, 2, 3};
 
-// Access properties
+// Access elements
 int a = obj["a"].toInt32();
 
-// Set properties
+// Set elements
 obj.setItem("f", "value");
 
-// Delete properties
+// Delete elements
 obj.erase("b");
 // Or use undefined to mark deletion
 obj["i"] = GAny::undefined();
