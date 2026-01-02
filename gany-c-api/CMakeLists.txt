@@ -24,7 +24,7 @@ target_compile_options(${TARGET_NAME}
         $<$<CXX_COMPILER_ID:MSVC>:/bigobj>
         $<$<AND:$<CXX_COMPILER_ID:GNU>,$<BOOL:${GNU_BIG_OBJ_FLAG_ENABLE}>>:-Wa,-mbig-obj>)
 
-set_target_properties(${TARGET_NAME} PROPERTIES FOLDER Gx)
+set_target_properties(${TARGET_NAME} PROPERTIES FOLDER GAny)
 
 ## Install
 if (GX_LIBS_INSTALL_DIR)
