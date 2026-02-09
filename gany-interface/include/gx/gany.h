@@ -2093,7 +2093,6 @@ public:
 
     GAny operator[](const std::string &key) const
     {
-        std::lock_guard locker(lock);
         const auto it = var.find(key);
         if (it == var.end()) {
             return GAny::undefined();
@@ -2103,7 +2102,6 @@ public:
 
     void set(const std::string &key, const GAny &value)
     {
-        std::lock_guard locker(lock);
         const auto it = var.find(key);
         if (it == var.end()) {
             var.insert(std::make_pair(key, value));
@@ -2114,7 +2112,6 @@ public:
 
     void erase(const std::string &key)
     {
-        std::lock_guard locker(lock);
         const auto it = var.find(key);
         if (it != var.end()) {
             var.erase(it);
@@ -2123,13 +2120,11 @@ public:
 
     bool contains(const std::string &key) const
     {
-        std::lock_guard locker(lock);
         return var.find(key) != var.end();
     }
 
     void clear()
     {
-        std::lock_guard locker(lock);
         var.clear();
     }
 
@@ -2143,7 +2138,6 @@ public:
     }
 
 public:
-    mutable std::mutex lock;
     mutable GAnyClass *clazz = nullptr;
 };
 
@@ -2186,7 +2180,6 @@ public:
 
     GAny operator[](int32_t i) const
     {
-        std::lock_guard locker(lock);
         if (i < var.size()) {
             return var[i];
         }
@@ -2195,13 +2188,11 @@ public:
 
     void push_back(const GAny &v)
     {
-        std::lock_guard locker(lock);
         var.push_back(v);
     }
 
     void set(int32_t i, const GAny &v)
     {
-        std::lock_guard locker(lock);
         if (i < var.size()) {
             var[i] = v;
         }
@@ -2209,7 +2200,6 @@ public:
 
     void erase(int32_t i)
     {
-        std::lock_guard locker(lock);
         if (i >= 0 && i < var.size()) {
             var.erase(var.begin() + i);
         }
@@ -2217,7 +2207,6 @@ public:
 
     bool contains(const GAny &v) const
     {
-        std::lock_guard locker(lock);
         for (const auto &i: var) {
             if (i == v) {
                 return true;
@@ -2228,7 +2217,6 @@ public:
 
     void clear()
     {
-        std::lock_guard locker(lock);
         var.clear();
     }
 
@@ -2240,9 +2228,6 @@ public:
             v.pushBack(i.clone());
         }
     }
-
-public:
-    mutable std::mutex lock;
 };
 
 /// ================================================================================================
@@ -2561,7 +2546,6 @@ public:
 
         const auto *arrayVar = tVar.as<GAnyArray>();
 
-        std::lock_guard locker(arrayVar->lock);
         for (const GAny &v: arrayVar->var) {
             try {
                 ret.push_back(const_cast<GAny &>(v).castAs<T>());
@@ -2629,7 +2613,6 @@ public:
 
         const auto *arrayVar = tVar.as<GAnyArray>();
 
-        std::lock_guard locker(arrayVar->lock);
         for (const GAny &v: arrayVar->var) {
             try {
                 ret.push_back(const_cast<GAny &>(v).castAs<T>());
@@ -2684,7 +2667,6 @@ public:
 
         const auto *objVar = tVar.as<GAnyObject>();
 
-        std::lock_guard locker(objVar->lock);
         for (const auto &v: objVar->var) {
             try {
                 ret.insert(std::make_pair(v.first, const_cast<GAny &>(v.second).castAs<T>()));
@@ -2725,7 +2707,6 @@ public:
 
         const auto *objVar = tVar.as<GAnyObject>();
 
-        std::lock_guard locker(objVar->lock);
         for (const auto &v: objVar->var) {
             try {
                 ret.insert(std::make_pair(v.first, const_cast<GAny &>(v.second).castAs<T>()));
@@ -3498,7 +3479,15 @@ GAny GAny::operator()(Args... args) const
     };
 
     const auto tArgc = static_cast<int32_t>(argv.size());
-    const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+    const GAny* stackArgs[16];
+    std::vector<const GAny*> heapArgs;
+    const GAny** tArgs;
+    if (tArgc <= 16) {
+        tArgs = stackArgs;
+    } else {
+        heapArgs.resize(tArgc);
+        tArgs = heapArgs.data();
+    }
     for (int32_t i = 0; i < tArgc; i++) {
         tArgs[i] = &argv.begin()[i];
     }
@@ -3514,7 +3503,15 @@ GAny GAny::operator()(Args... args)
     };
 
     const auto tArgc = static_cast<int32_t>(argv.size());
-    const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+    const GAny* stackArgs[16];
+    std::vector<const GAny*> heapArgs;
+    const GAny** tArgs;
+    if (tArgc <= 16) {
+        tArgs = stackArgs;
+    } else {
+        heapArgs.resize(tArgc);
+        tArgs = heapArgs.data();
+    }
     for (int32_t i = 0; i < tArgc; i++) {
         tArgs[i] = &argv.begin()[i];
     }
@@ -4320,7 +4317,6 @@ inline GAny &GAny::operator[](const GAny &key)
         }
         auto &obj = *as<GAnyObject>();
         const auto &keyS = *key.as<std::string>();
-        std::lock_guard locker(obj.lock);
         const auto it = obj.var.find(keyS);
         if (it != obj.var.end()) {
             return it->second;
@@ -4334,7 +4330,6 @@ inline GAny &GAny::operator[](const GAny &key)
             return *this;
         }
         auto &arr = *as<GAnyArray>();
-        std::lock_guard locker(arr.lock);
         return arr.var[key.toInt32()];
     }
     assert(false && "The current type cannot use the \"[]\" operator to take values");
@@ -5622,7 +5617,15 @@ inline GAny GAnyClass::_call(const GAny &inst, const std::string &methodName, co
             }
 
             const auto tArgc = argc + 1;
-            const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+            const GAny* stackArgs[16];
+            std::vector<const GAny*> heapArgs;
+            const GAny** tArgs;
+            if (tArgc <= 16) {
+                tArgs = stackArgs;
+            } else {
+                heapArgs.resize(tArgc);
+                tArgs = heapArgs.data();
+            }
             tArgs[0] = &inst;
             for (int32_t i = 0; i < argc; i++) {
                 tArgs[i + 1] = args[i];
@@ -5689,7 +5692,15 @@ inline void GAnyClass::makeConstructor(GAny pFunc)
         }
 
         const int32_t tArgc = argc + 1;
-        const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+        const GAny* stackArgs[16];
+        std::vector<const GAny*> heapArgs;
+        const GAny** tArgs;
+        if (tArgc <= 16) {
+            tArgs = stackArgs;
+        } else {
+            heapArgs.resize(tArgc);
+            tArgs = heapArgs.data();
+        }
 
         tArgs[0] = &self;
         for (int32_t i = 0; i < argc; i++) {
@@ -5761,7 +5772,15 @@ inline GAny GAnyClass::_new(const GAny **args, int32_t argc) const
 inline GAny GAnyClass::_new(std::vector<GAny> &args) const
 {
     const auto tArgc = static_cast<int32_t>(args.size());
-    const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+    const GAny* stackArgs[16];
+    std::vector<const GAny*> heapArgs;
+    const GAny** tArgs;
+    if (tArgc <= 16) {
+        tArgs = stackArgs;
+    } else {
+        heapArgs.resize(tArgc);
+        tArgs = heapArgs.data();
+    }
     for (int32_t i = 0; i < tArgc; i++) {
         tArgs[i] = &args.begin()[i];
     }
@@ -5777,7 +5796,15 @@ GAny GAnyClass::_new(Args... args) const
     };
 
     const auto tArgc = static_cast<int32_t>(argv.size());
-    const auto tArgs = static_cast<const GAny **>(alloca(sizeof(GAny *) * tArgc));
+    const GAny* stackArgs[16];
+    std::vector<const GAny*> heapArgs;
+    const GAny** tArgs;
+    if (tArgc <= 16) {
+        tArgs = stackArgs;
+    } else {
+        heapArgs.resize(tArgc);
+        tArgs = heapArgs.data();
+    }
     for (int32_t i = 0; i < tArgc; i++) {
         tArgs[i] = &argv.begin()[i];
     }
@@ -7112,15 +7139,12 @@ REGISTER_GANY_MODULE(Builtin)
             .setDoc("GAnyArray")
             .func(MetaFunction::Addition,
                   [](const GAnyArray &self, const GAnyArray &other) {
-                      std::lock_guard locker1(self.lock);
-                      std::lock_guard locker2(other.lock);
                       std::vector<GAny> ret(self.var);
                       ret.insert(ret.end(), other.var.begin(), other.var.end());
                       return ret;
                   })
             .func(MetaFunction::Multiplication,
                   [](const GAnyArray &self, const int &num) {
-                      std::lock_guard locker1(self.lock);
                       std::vector<GAny> ret;
                       for (int i = 0; i < num; ++i) {
                           ret.insert(ret.end(), self.var.begin(), self.var.end());
@@ -7143,7 +7167,6 @@ REGISTER_GANY_MODULE(Builtin)
             })
             .func("forEach", [](GAnyArray &self, const GAny &func) {
                 // func: function(const GAny &value)->bool
-                std::lock_guard locker(self.lock);
                 for (auto &item: self.var) {
                     auto ret = func(item);
                     if (ret.isBoolean() && !ret.toBool()) {
@@ -7152,7 +7175,6 @@ REGISTER_GANY_MODULE(Builtin)
                 }
             })
             .func("insert", [](GAnyArray &self, int32_t index, const GAny &val) {
-                std::lock_guard locker(self.lock);
                 if (index < 0 || index > self.var.size()) {
                     return;
                 }
@@ -7160,7 +7182,6 @@ REGISTER_GANY_MODULE(Builtin)
                 self.var.insert(it, val);
             })
             .func("sort", [](GAnyArray &self, const GAny &comp) {
-                std::lock_guard locker(self.lock);
                 if (comp.isFunction()) {
                     std::sort(self.var.begin(), self.var.end(), [&comp](const GAny &lhs, const GAny &rhs) {
                         return comp(lhs, rhs).toBool();
@@ -7177,12 +7198,9 @@ REGISTER_GANY_MODULE(Builtin)
             .func(MetaFunction::Addition,
                   [](const GAnyObject &self, const GAnyObject &rhs) {
                       if (&self == &rhs) {
-                          std::lock_guard locker1(self.lock);
                           return self.var;
                       } else {
                           auto ret = self.var;
-                          std::lock_guard locker1(self.lock);
-                          std::lock_guard locker2(rhs.lock);
                           for (const auto &it: rhs.var) {
                               if (ret.find(it.first) == ret.end()) {
                                   ret.insert(it);
@@ -7196,7 +7214,6 @@ REGISTER_GANY_MODULE(Builtin)
                     return false;
                 }
 
-                std::lock_guard locker1(self.lock);
                 for (const auto &it: self.var) {
                     std::string k = it.first;
                     const auto &v = it.second;
@@ -7212,7 +7229,6 @@ REGISTER_GANY_MODULE(Builtin)
             })
             .func("forEach", [](GAnyObject &self, const GAny &func) {
                 // func: function(const std::string &key, const GAny &value)->bool
-                std::lock_guard locker(self.lock);
                 for (auto &item: self.var) {
                     auto ret = func(item.first, item.second);
                     if (ret.isBoolean() && !ret.toBool()) {
