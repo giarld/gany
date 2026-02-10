@@ -514,8 +514,8 @@ public:
     template<typename T>
     GAny(const T &var);
 
-    template<typename T>
-    GAny(std::enable_if_t<!std::is_same_v<T, GAny>, T> &&var);
+    template<typename T, typename = std::enable_if_t<!std::is_same_v<std::decay_t<T>, GAny> && !std::is_reference_v<T>>>
+    GAny(T &&var);
 
     template<typename T>
     GAny(std::unique_ptr<T> &&v);
@@ -719,10 +719,10 @@ public:
     GAny _call(const std::vector<GAny> &args);
 
     template<typename... Args>
-    GAny operator()(Args... args) const;
+    GAny operator()(Args&&... args) const;
 
     template<typename... Args>
-    GAny operator()(Args... args);
+    GAny operator()(Args&&... args);
 
 public:
     GAny operator-() const; // Negate
@@ -1036,10 +1036,10 @@ public:
     GAny _call(const GAny **args, int32_t argc) const;
 
     template<typename... Args>
-    GAny call(Args... args) const
+    GAny call(Args&&... args) const
     {
         const std::initializer_list<GAny> argv = {
-            (GAny(std::move(args)))...
+            (GAny(std::forward<Args>(args)))...
         };
 
         const auto tArgc = static_cast<int32_t>(argv.size());
@@ -1467,10 +1467,10 @@ public:
 
 public:
     template<typename... Args>
-    GAny call(const GAny &inst, const std::string &methodName, Args... args) const
+    GAny call(const GAny &inst, const std::string &methodName, Args&&... args) const
     {
         const std::initializer_list<GAny> argv = {
-            (GAny(std::move(args)))...
+            (GAny(std::forward<Args>(args)))...
         };
 
         const auto tArgc = static_cast<int32_t>(argv.size());
@@ -3208,8 +3208,8 @@ GAny::GAny(const T &var)
 {
 }
 
-template<typename T>
-GAny::GAny(std::enable_if_t<!std::is_same_v<T, GAny>, T> &&var)
+template<typename T, typename>
+GAny::GAny(T &&var)
     : GAny(caster<T>::castFrom(std::move(var)))
 {
 }
@@ -3465,10 +3465,10 @@ GAny GAny::call(const std::string &methodName, Args &&... args)
 }
 
 template<typename... Args>
-GAny GAny::operator()(Args... args) const
+GAny GAny::operator()(Args&&... args) const
 {
     const std::initializer_list<GAny> argv = {
-        (GAny(std::move(args)))...
+        (GAny(std::forward<Args>(args)))...
     };
 
     const auto tArgc = static_cast<int32_t>(argv.size());
@@ -3489,10 +3489,10 @@ GAny GAny::operator()(Args... args) const
 }
 
 template<typename... Args>
-GAny GAny::operator()(Args... args)
+GAny GAny::operator()(Args&&... args)
 {
     const std::initializer_list<GAny> argv = {
-        (GAny(std::move(args)))...
+        (GAny(std::forward<Args>(args)))...
     };
 
     const auto tArgc = static_cast<int32_t>(argv.size());
