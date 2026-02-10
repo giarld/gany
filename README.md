@@ -264,6 +264,32 @@ obj.call("forEach", [](const std::string &k, const GAny &v) {
 
 完整示例请参考 `examples/test_gany.cpp`。
 
+## 性能警告
+
+GAny 是一个动态类型系统，虽然提供了极大的灵活性，但在进行数值计算时，其性能由于动态类型检查和分发机制，会显著低于原生 C++ 类型。
+
+> [!WARNING]
+> **请勿在性能敏感的循环或繁重计算中使用 GAny 进行算术运算！**
+
+如果需要进行大量计算，请先将 GAny 转换为原生类型（如 `int`, `double` 等），计算完成后再转换回 GAny。
+
+**错误示例（低效）：**
+```cpp
+GAny sum = 0;
+for (int i = 0; i < 1000000; i++) {
+    sum = sum + i;  // 每次加法都涉及动态类型检查和内存分配
+}
+```
+
+**正确示例（高效）：**
+```cpp
+int64_t nativeSum = 0;
+for (int i = 0; i < 1000000; i++) {
+    nativeSum += i; // 原生 C++ 运算，性能极高
+}
+GAny sum = nativeSum; // 仅在最后进行一次转换
+```
+
 ## 主程序初始化
 
 ```cpp
