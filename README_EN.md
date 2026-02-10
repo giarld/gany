@@ -374,6 +374,32 @@ obj.call("print");
 
 For complete examples, please refer to `examples/test_gany.cpp`.
 
+## Performance Warning
+
+GAny is a dynamic type system. While it provides great flexibility, its performance during numerical computations will be significantly lower than native C++ types due to dynamic type checking and dispatch mechanisms.
+
+> [!WARNING]
+> **Do not use GAny for arithmetic operations in performance-sensitive loops or heavy computations!**
+
+If you need to perform heavy computations, please convert GAny to native types (e.g., `int`, `double`) first, perform the computation, and then convert back to GAny.
+
+**Incorrect Example (Inefficient):**
+```cpp
+GAny sum = 0;
+for (int i = 0; i < 1000000; i++) {
+    sum = sum + i;  // Each addition involves dynamic type checking and memory allocation
+}
+```
+
+**Correct Example (Efficient):**
+```cpp
+int64_t nativeSum = 0;
+for (int i = 0; i < 1000000; i++) {
+    nativeSum += i; // Native C++ operation, extremely high performance
+}
+GAny sum = nativeSum; // Only convert once at the end
+```
+
 ## Initialization
 
 ```cpp

@@ -260,6 +260,116 @@ obj.call("forEach", [](const std::string &k, const GAny &v) {
 });
 ```
 
+### 11. 枚举 (Enums)
+
+支持枚举标志 (Enum Flags) 和普通枚举：
+
+```cpp
+// 定义枚举标志
+DEF_ENUM_FLAGS_8(TypeA, int8_t,
+    None, 0,
+    A, 0x01,
+    B, 0x02,
+    C, 0x04
+);
+
+// 注册枚举
+REF_ENUM(TypeA, "", "Enum TypeA");
+
+// 使用枚举
+auto a = GAny::Import("TypeA").getItem("A");
+auto e = GAny::Import("TypeA").getItem("E");
+auto ae = a | e;  // 位运算
+
+if ((ae & e) == e) {
+    // 检查标志
+}
+
+// 普通枚举
+enum class TypeB : int8_t { A = 1, B, C, D, E };
+DEF_ENUM_OPERATORS(TypeB, int8_t);
+
+Class<TypeB>("Gx.Test", "TypeB", "Enum TypeB")
+    .defEnum({{"A", TypeB::A}, {"B", TypeB::B}});
+```
+
+### 12. 运算符支持 (Operator Support)
+
+支持常用运算符：
+
+```cpp
+// 算术运算
+GAny a = 10;
+GAny b = 3;
+GAny sum = a + b;      // 13
+GAny diff = a - b;     // 7
+GAny prod = a * b;     // 30
+GAny quot = a / b;     // 3
+GAny mod = a % b;      // 1
+
+// 比较运算
+bool eq = (a == b);    // false
+bool ne = (a != b);    // true
+bool lt = (a < b);     // false
+bool gt = (a > b);     // true
+bool le = (a <= b);    // false
+bool ge = (a >= b);    // true
+
+// 字符串拼接
+GAny str1 = "Hello ";
+GAny str2 = "World";
+GAny greeting = str1 + str2;  // "Hello World"
+```
+
+### 13. 异常处理 (Exception Handling)
+
+```cpp
+// 创建异常
+GAny ex = GAnyException("Error message");
+
+// 检查异常
+if (result.isException()) {
+    std::string msg = result.toString();
+}
+
+// 使用 try-catch
+try {
+    TestA obj = strVal.castAs<TestA>();
+} catch (const GAnyException &e) {
+    std::cout << "Error: " << e.what() << std::endl;
+}
+
+// 函数返回异常
+GAny func = GAnyFunction::createVariadicFunction("test",
+    [](const GAny **args, int32_t argc) -> GAny {
+        if (argc < 1) {
+            return GAnyException("Missing argument");
+        }
+        return GAny("Success");
+    });
+```
+
+### 14. 动态类 (Dynamic Classes)
+
+在运行时创建类：
+
+```cpp
+// 创建动态类
+auto dTypeA = GAnyClass::Class("", "DTypeA", "Dynamic type A");
+dTypeA->inherit(GAny::Import("TestA"))
+      .staticFunc(MetaFunction::Init, [](GAny &self, int32_t a, double b) {
+          self.setItem("__parent", GAny::New<TestA>(a, b));
+      })
+      .property("c",
+          [](GAny &self) { return self.getItem("__p_c"); },
+          [](GAny &self, const std::string &v) { self.setItem("__p_c", v); });
+
+// 创建实例
+auto obj = dTypeA->_new(123, 3.1415);
+obj.setItem("a", 456);
+obj.call("print");
+```
+
 ## 使用示例
 
 完整示例请参考 `examples/test_gany.cpp`。
