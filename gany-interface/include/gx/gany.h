@@ -624,23 +624,23 @@ public:
 
     template<typename T>
     std::enable_if_t<std::is_pointer_v<T> && !std::is_void_v<std::remove_pointer_t<T>>, T>
-    castAs();
+    castAs(std::vector<GAny> *stackCache = nullptr);
 
     template<typename T>
     std::enable_if_t<std::is_pointer_v<T> && std::is_void_v<std::remove_pointer_t<T>>, T>
-    castAs();
+    castAs(std::vector<GAny> *stackCache = nullptr);
 
     template<typename T>
     std::enable_if_t<std::is_reference_v<T>, T>
-    castAs();
+    castAs(std::vector<GAny> *stackCache = nullptr);
 
     template<typename T>
     std::enable_if_t<!std::is_reference_v<T> && !std::is_pointer_v<T>, T>
-    castAs() const;
+    castAs(std::vector<GAny> *stackCache = nullptr) const;
 
     template<typename F>
     std::enable_if_t<detail::is_std_function<F>::value, F>
-    castAs();
+    castAs(std::vector<GAny> *stackCache = nullptr);
 
     const void *getPointer() const;
 
@@ -912,12 +912,6 @@ private:
 
     std::shared_ptr<GAnyValue> mVal;
 };
-
-inline std::stack<std::vector<GAny>>& GetLocVarCache()
-{
-    thread_local std::stack<std::vector<GAny>> cache;
-    return cache;
-}
 
 /// ================ GAnyException ================
 
@@ -1511,13 +1505,13 @@ public:
     static std::shared_ptr<GAnyClass> instance()
     {
         if constexpr (std::is_reference_v<T>) {
-            typedef std::remove_const_t<std::remove_reference_t<T> > RmConstRefType;
-            return _instance(GAnyTypeInfoP<RmConstRefType>());
+            typedef std::decay_t<T> DecayType;
+            return _instance(GAnyTypeInfoP<DecayType>());
         }
 
         if constexpr (std::is_pointer_v<T>) {
-            typedef std::remove_const_t<std::remove_pointer_t<T> > RmConstPtr;
-            return _instance(GAnyTypeInfoP<RmConstPtr>());
+            typedef std::remove_pointer_t<std::decay_t<T> > DecayType;
+            return _instance(GAnyTypeInfoP<DecayType>());
         }
 
         return _instance(GAnyTypeInfoP<T>());
@@ -3248,15 +3242,14 @@ template<class T>
 GAny GAny::create(const T &t)
 {
     static_assert(!std::is_same_v<T, GAny>, "This should not happen.");
-    return fromValue(std::make_shared<GAnyValueP<std::remove_const_t<std::remove_reference_t<T> > > >(t));
+    return fromValue(std::make_shared<GAnyValueP<std::decay_t<T> > >(t));
 }
 
 template<class T>
 GAny GAny::create(T &&t)
 {
     static_assert(!std::is_same_v<T, GAny>, "This should not happen.");
-    return fromValue(std::make_shared<GAnyValueP<std::remove_const_t<std::remove_reference_t<T> > > >(
-        std::forward<T>(t)));
+    return fromValue(std::make_shared<GAnyValueP<std::decay_t<T> > >(std::forward<T>(t)));
 }
 
 template<typename T>
@@ -3310,7 +3303,7 @@ const T *GAny::unsafeAs() const
 
 template<typename T>
 std::enable_if_t<!std::is_reference_v<T> && !std::is_pointer_v<T>, T>
-GAny::castAs() const
+GAny::castAs(std::vector<GAny> *stackCache) const
 {
     T *ptr = (T *) as<T>();
     if (ptr) {
@@ -3322,9 +3315,8 @@ GAny::castAs() const
         ret = classObject().castToBase(*GAnyClass::instance<T>(), *this);
     }
     if (ret.is<T>()) {
-        if (!GetLocVarCache().empty()) {
-            auto &cache = GetLocVarCache().top();
-            cache.push_back(ret);
+        if (stackCache) {
+            stackCache->push_back(ret);
         }
         return *ret.as<T>();
     }
@@ -3334,27 +3326,27 @@ GAny::castAs() const
 
 template<typename T>
 std::enable_if_t<std::is_reference_v<T>, T>
-GAny::castAs()
+GAny::castAs(std::vector<GAny> *stackCache)
 {
-    typedef std::remove_const_t<std::remove_reference_t<T> > RmConstRefType;
+    typedef std::decay_t<T> DecayType;
 
-    if (!is<RmConstRefType>()) {
-        return *castAs<RmConstRefType *>();
+    if (!is<DecayType>()) {
+        return *castAs<DecayType *>(stackCache);
     }
 
-    return *as<RmConstRefType>();
+    return *as<DecayType>();
 }
 
 template<typename T>
-std::enable_if_t<std::is_pointer_v<T> && !std::is_void_v<std::remove_pointer_t<T>>, T> GAny::castAs()
+std::enable_if_t<std::is_pointer_v<T> && !std::is_void_v<std::remove_pointer_t<T>>, T>
+GAny::castAs(std::vector<GAny> *stackCache)
 {
-    typedef std::remove_const_t<std::remove_pointer_t<T> > RmConstPtrType;
+    typedef std::remove_pointer_t<std::decay_t<T> > RmConstPtrType;
 
     if constexpr (detail::is_std_function<RmConstPtrType>::value) {
         GAny ret = GAny::create(castAs<RmConstPtrType>());
-        if (!GetLocVarCache().empty()) {
-            auto &cache = GetLocVarCache().top();
-            cache.push_back(ret);
+        if (stackCache) {
+            stackCache->push_back(ret);
         }
         T ptr = ret.as<RmConstPtrType>();
         return ptr;
@@ -3379,9 +3371,8 @@ std::enable_if_t<std::is_pointer_v<T> && !std::is_void_v<std::remove_pointer_t<T
         ret = classObject().castToBase(*GAnyClass::instance<RmConstPtrType>(), *this);
     }
     if (ret.is<RmConstPtrType>()) {
-        if (!GetLocVarCache().empty()) {
-            auto &cache = GetLocVarCache().top();
-            cache.push_back(ret);
+        if (stackCache) {
+            stackCache->push_back(ret);
         }
         ptr = ret.as<RmConstPtrType>();
         if (ptr) {
@@ -3394,7 +3385,8 @@ std::enable_if_t<std::is_pointer_v<T> && !std::is_void_v<std::remove_pointer_t<T
 }
 
 template<typename T>
-std::enable_if_t<std::is_pointer_v<T> && std::is_void_v<std::remove_pointer_t<T>>, T> GAny::castAs()
+std::enable_if_t<std::is_pointer_v<T> && std::is_void_v<std::remove_pointer_t<T>>, T>
+GAny::castAs(std::vector<GAny> *)
 {
     return const_cast<void*>(mVal->ptr());
 }
@@ -3418,13 +3410,14 @@ genLambda(Ret (*)(Args...), GAny c)
 }
 
 template<typename F>
-std::enable_if_t<detail::is_std_function<F>::value, F> GAny::castAs()
+std::enable_if_t<detail::is_std_function<F>::value, F>
+GAny::castAs(std::vector<GAny> *)
 {
     return genLambda(static_cast<detail::function_signature_t<F> *>(nullptr), *this);
 }
 
 template<>
-inline GAny GAny::castAs<GAny>() const
+inline GAny GAny::castAs<GAny>(std::vector<GAny> *) const
 {
     return *this;
 }
@@ -5029,9 +5022,8 @@ template<typename Func, typename Return, typename... Args, size_t... Is>
 std::enable_if_t<std::is_void_v<Return>, GAny>
 GAnyFunction::call_impl(Func &&f, Return (*)(Args...), const GAny **args, detail::index_sequence<Is...>)
 {
-    GetLocVarCache().emplace();
-    f(const_cast<GAny *>(args[Is])->castAs<Args>()...);
-    GetLocVarCache().pop();
+    std::vector<GAny> stackCache;
+    f(const_cast<GAny *>(args[Is])->castAs<Args>(&stackCache)...);
     return GAny::undefined();
 }
 
@@ -5039,25 +5031,22 @@ template<typename Func, typename Return, typename... Args, size_t... Is>
 std::enable_if_t<!std::is_void_v<Return>, GAny>
 GAnyFunction::call_impl(Func &&f, Return (*)(Args...), const GAny **args, detail::index_sequence<Is...>)
 {
+    std::vector<GAny> stackCache;
     if constexpr (std::is_reference_v<Return>) {
-        typedef std::remove_const_t<std::remove_reference_t<Return> > RmConstRefRetType;
+        typedef std::decay_t<Return> DecayRetType;
 
-        GetLocVarCache().emplace();
-        auto *r = &f(const_cast<GAny *>(args[Is])->castAs<Args>()...);
+        auto *r = &f(const_cast<GAny *>(args[Is])->castAs<Args>(&stackCache)...);
         GAny rv;
-        if constexpr (detail::is_array_t<RmConstRefRetType>::value
-                      || detail::is_map_t<RmConstRefRetType>::value
-                      || detail::is_shared_ptr<RmConstRefRetType>::value) {
+        if constexpr (detail::is_array_t<DecayRetType>::value
+                      || detail::is_map_t<DecayRetType>::value
+                      || detail::is_shared_ptr<DecayRetType>::value) {
             rv = *r;
         } else {
             rv = r;
         }
-        GetLocVarCache().pop();
         return rv;
     } else {
-        GetLocVarCache().emplace();
-        GAny r = f(const_cast<GAny *>(args[Is])->castAs<Args>()...);
-        GetLocVarCache().pop();
+        GAny r = f(const_cast<GAny *>(args[Is])->castAs<Args>(&stackCache)...);
         return r;
     }
 }
