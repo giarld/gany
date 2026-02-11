@@ -187,7 +187,7 @@ std::string testFunc(int32_t a, float b)
 }
 
 
-int main(int argc, char *argv[])
+int main(int, char **)
 {
 #if GX_PLATFORM_WINDOWS
     system("chcp 65001");
@@ -334,7 +334,7 @@ int main(int argc, char *argv[])
         }
 
         // Test function call exception
-        GAny func = GAnyFunction::createVariadicFunction("testFunc", [](const GAny **args, int32_t argc) -> GAny {
+        GAny func = GAnyFunction::createVariadicFunction("testFunc", [](const GAny **/*args*/, int32_t argc) -> GAny {
             if (argc < 1) {
                 return GAnyException("Missing argument");
             }
@@ -384,7 +384,7 @@ int main(int argc, char *argv[])
         GAny strVal = "hello";
         GAny arrVal = {1, 2, 3};
         GAny objVal = GAny::object();
-        GAny funcVal = [](){};
+        GAny funcVal = []{};
         GAny nullVal = GAny::null();
         GAny undefVal = GAny::undefined();
 
@@ -774,6 +774,192 @@ int main(int argc, char *argv[])
         jObj["b"] = {{"tb", tb}};
 
         std::cout << "User objects automatically become part of json:\n" << jObj.toJsonString(2) << std::endl;
+    }
+
+    // createVariadicFunction
+    {
+        printf("\n============= createVariadicFunction =============\n\n");
+
+        // 零参数调用
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("noArgs", [](const GAny **/*args*/, int32_t argc) -> GAny {
+                assert(argc == 0);
+                return GAny("no args called");
+            });
+            GAny r = fn();
+            assert(r.toString() == "no args called");
+            printf("Test 1 (zero args): %s\n", r.toString().c_str());
+        }
+
+        // 单参数调用，返回参数本身
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("echo", [](const GAny **args, int32_t argc) -> GAny {
+                if (argc != 1) return GAnyException("Expected 1 arg");
+                return *args[0];
+            });
+            GAny r = fn(42);
+            assert(r.toInt32() == 42);
+            printf("Test 2 (single arg echo): %d\n", r.toInt32());
+        }
+
+        // 多参数求和（整数）
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("sum", [](const GAny **args, int32_t argc) -> GAny {
+                int64_t sum = 0;
+                for (int32_t i = 0; i < argc; i++) {
+                    sum += args[i]->toInt64();
+                }
+                return GAny(sum);
+            });
+            assert(fn(1, 2, 3).toInt64() == 6);
+            assert(fn(10, 20, 30, 40).toInt64() == 100);
+            assert(fn().toInt64() == 0); // 零参数求和为0
+            printf("Test 3 (variadic sum): 1+2+3=%lld, 10+20+30+40=%lld\n",
+                   fn(1, 2, 3).toInt64(), fn(10, 20, 30, 40).toInt64());
+        }
+
+        // 混合类型参数（int, string, double, bool）
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("mixedTypes", [](const GAny **args, int32_t argc) -> GAny {
+                // 拼接所有参数的字符串表示
+                std::string result;
+                for (int32_t i = 0; i < argc; i++) {
+                    if (i > 0) result += ", ";
+                    result += args[i]->toString();
+                }
+                return GAny(result);
+            });
+            GAny r = fn(42, "hello", 3.14, true);
+            printf("Test 4 (mixed types): %s\n", r.toString().c_str());
+            // 验证包含所有参数
+            assert(r.toString().find("42") != std::string::npos);
+            assert(r.toString().find("hello") != std::string::npos);
+            assert(r.toString().find("true") != std::string::npos);
+        }
+
+        // 返回不同类型（数组）
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("toArray", [](const GAny **args, int32_t argc) -> GAny {
+                // 将所有参数打包成数组返回
+                GAny arr = GAny::array();
+                for (int32_t i = 0; i < argc; i++) {
+                    arr.pushBack(*args[i]);
+                }
+                return arr;
+            });
+            GAny r = fn("a", "b", "c");
+            assert(r.isArray());
+            assert(r.size() == 3);
+            assert(r[0].toString() == "a");
+            assert(r[1].toString() == "b");
+            assert(r[2].toString() == "c");
+            printf("Test 5 (return array): size=%lld, [0]=%s, [1]=%s, [2]=%s\n",
+                   r.size(), r[0].toString().c_str(), r[1].toString().c_str(), r[2].toString().c_str());
+        }
+
+        // 返回对象
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("makeObj", [](const GAny **args, int32_t argc) -> GAny {
+                // 参数成对出现：key, value, key, value...
+                GAny obj = GAny::object();
+                for (int32_t i = 0; i + 1 < argc; i += 2) {
+                    obj[args[i]->toString()] = *args[i + 1];
+                }
+                return obj;
+            });
+            GAny r = fn("name", "Alice", "age", 30);
+            assert(r.isObject());
+            assert(r["name"].toString() == "Alice");
+            assert(r["age"].toInt32() == 30);
+            printf("Test 6 (return object): name=%s, age=%d\n",
+                   r["name"].toString().c_str(), r["age"].toInt32());
+        }
+
+        // 返回异常（参数不足）
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("needsArgs", [](const GAny **args, int32_t argc) -> GAny {
+                if (argc < 2) {
+                    return GAnyException("Need at least 2 arguments, got " + std::to_string(argc));
+                }
+                return *args[0] + *args[1];
+            });
+            // 参数不足时返回异常
+            GAny err = fn(1);
+            assert(err.isException());
+            printf("Test 7 (exception on too few args): %s\n", err.toString().c_str());
+            // 参数充足时正常返回
+            GAny ok = fn(10, 20);
+            assert(!ok.isException());
+            assert(ok.toInt32() == 30);
+            printf("Test 7 (success with enough args): %d\n", ok.toInt32());
+        }
+
+        // isVariadicFunction 标记检查
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("checkFlag", [](const GAny **/*args*/, int32_t /*argc*/) -> GAny {
+                return GAny();
+            });
+            assert(fn.is<GAnyFunction>());
+            assert(fn.as<GAnyFunction>()->isVariadicFunction());
+            assert(fn.as<GAnyFunction>()->getName() == "checkFlag");
+            printf("Test 8 (isVariadicFunction): %s, name=%s\n",
+                   fn.as<GAnyFunction>()->isVariadicFunction() ? "true" : "false",
+                   fn.as<GAnyFunction>()->getName().c_str());
+        }
+
+        // 赋值给 GAny 变量并作为对象方法使用
+        {
+            GAny obj = GAny::object();
+            obj["add"] = GAnyFunction::createVariadicFunction("add", [](const GAny **args, int32_t argc) -> GAny {
+                double sum = 0;
+                for (int32_t i = 0; i < argc; i++) {
+                    sum += args[i]->toDouble();
+                }
+                return GAny(sum);
+            });
+            // 通过对象调用
+            GAny r = obj["add"](1.5, 2.5, 3.0);
+            assert(r.toDouble() == 7.0);
+            printf("Test 9 (as object method): 1.5+2.5+3.0=%f\n", r.toDouble());
+        }
+
+        // GAny 参数传递（传入数组和对象）
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("complexArgs", [](const GAny **args, int32_t argc) -> GAny {
+                // 要求第一个参数是数组，第二个参数是对象
+                if (argc < 2) return GAnyException("Need 2 args");
+                if (!args[0]->isArray()) return GAnyException("arg[0] must be array");
+                if (!args[1]->isObject()) return GAnyException("arg[1] must be object");
+                // 返回数组长度 + 对象的键数量
+                return GAny((int64_t)(args[0]->size() + args[1]->size()));
+            });
+            GAny arr = {1, 2, 3};
+            GAny obj = GAny::object();
+            obj["x"] = 1;
+            obj["y"] = 2;
+            GAny r = fn(arr, obj);
+            assert(r.toInt64() == 5); // 3 + 2
+            printf("Test 10 (complex GAny args): array(3) + object(2) = %lld\n", r.toInt64());
+        }
+
+        // 大量参数调用
+        {
+            GAny fn = GAnyFunction::createVariadicFunction("countArgs", [](const GAny **/*args*/, int32_t argc) -> GAny {
+                return GAny((int32_t)argc);
+            });
+            // 测试不同数量的参数
+            assert(fn().toInt32() == 0);
+            assert(fn(1).toInt32() == 1);
+            assert(fn(1, 2).toInt32() == 2);
+            assert(fn(1, 2, 3, 4, 5).toInt32() == 5);
+            assert(fn(1, 2, 3, 4, 5, 6, 7, 8).toInt32() == 8);
+            printf("Test 11 (arg count): 0=%d, 1=%d, 5=%d, 8=%d\n",
+                   fn().toInt32(), fn(1).toInt32(),
+                   fn(1, 2, 3, 4, 5).toInt32(),
+                   fn(1, 2, 3, 4, 5, 6, 7, 8).toInt32());
+        }
+
+        printf("\nPass\n");
     }
 
     // Dynamic class
